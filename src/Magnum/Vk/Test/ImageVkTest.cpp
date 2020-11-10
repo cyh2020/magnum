@@ -23,6 +23,9 @@
     DEALINGS IN THE SOFTWARE.
 */
 
+#include <Corrade/TestSuite/Compare/Numeric.h>
+
+#include "Magnum/Vk/DeviceProperties.h"
 #include "Magnum/Vk/Handle.h"
 #include "Magnum/Vk/Image.h"
 #include "Magnum/Vk/Memory.h"
@@ -46,6 +49,9 @@ struct ImageVkTest: VulkanTester {
     void wrap();
 
     void memoryRequirements();
+
+    void bindMemory();
+    void bindDedicatedMemory();
 };
 
 ImageVkTest::ImageVkTest() {
@@ -60,7 +66,10 @@ ImageVkTest::ImageVkTest() {
 
               &ImageVkTest::wrap,
 
-              &ImageVkTest::memoryRequirements});
+              &ImageVkTest::memoryRequirements,
+
+              &ImageVkTest::bindMemory,
+              &ImageVkTest::bindDedicatedMemory});
 }
 
 void ImageVkTest::construct1D() {
@@ -190,6 +199,43 @@ void ImageVkTest::memoryRequirements() {
 
     MemoryRequirements requirements = image.memoryRequirements();
     CORRADE_COMPARE(requirements.size(), 128*64*4);
+}
+
+void ImageVkTest::bindMemory() {
+    Image image{device(), ImageCreateInfo2D{ImageUsage::Sampled,
+        VK_FORMAT_R8G8B8A8_UNORM, {256, 256}, 8}, NoAllocate};
+    MemoryRequirements requirements = image.memoryRequirements();
+
+    /* We're testing the offset, so ensure what we hardcode is correctly
+       aligned */
+    constexpr UnsignedLong offset = 4096;
+    CORRADE_COMPARE_AS(offset, requirements.alignment(),
+        TestSuite::Compare::Divisible);
+
+    Vk::Memory memory{device(), Vk::MemoryAllocateInfo{
+        requirements.size() + offset,
+        deviceProperties().pickMemory(Vk::MemoryFlag::DeviceLocal, requirements.memories())}};
+
+    image.bindMemory(memory, offset);
+    CORRADE_VERIFY(!image.hasDedicatedMemory());
+}
+
+void ImageVkTest::bindDedicatedMemory() {
+    Image image{device(), ImageCreateInfo2D{ImageUsage::Sampled,
+        VK_FORMAT_R8G8B8A8_UNORM, {256, 256}, 8}, NoAllocate};
+    MemoryRequirements requirements = image.memoryRequirements();
+
+    /** @todo expand once KHR_dedicated_allocation is implemented */
+
+    Vk::Memory memory{device(), Vk::MemoryAllocateInfo{
+        requirements.size(),
+        deviceProperties().pickMemory(Vk::MemoryFlag::DeviceLocal, requirements.memories())}};
+    VkDeviceMemory handle = memory.handle();
+    CORRADE_VERIFY(handle);
+
+    image.bindDedicatedMemory(std::move(memory));
+    CORRADE_VERIFY(image.hasDedicatedMemory());
+    CORRADE_COMPARE(image.dedicatedMemory().handle(), handle);
 }
 
 }}}}

@@ -35,6 +35,7 @@
 #include "Magnum/DimensionTraits.h"
 #include "Magnum/Magnum.h"
 #include "Magnum/Math/Vector3.h"
+#include "Magnum/Vk/Memory.h"
 #include "Magnum/Vk/Vk.h"
 #include "Magnum/Vk/Vulkan.h"
 #include "Magnum/Vk/visibility.h"
@@ -400,6 +401,42 @@ class MAGNUM_VK_EXPORT Image {
         MemoryRequirements memoryRequirements() const;
 
         /**
+         * @brief Bind image memory
+         *
+         * Assumes that @p memory type, the amount of @p memory at @p offset
+         * and @p offset alignment corresponds to image memory requirements.
+         * @see @ref bindDedicatedMemory(), @fn_vk_keyword{BindImageMemory2},
+         *      @fn_vk_keyword{BindImageMemory}
+         */
+        void bindMemory(Memory& memory, UnsignedLong offset);
+
+        /**
+         * @brief Bind a dedicated image memory
+         *
+         * Equivalent to @ref bindMemory() with @p offset set to @cpp 0 @ce,
+         * with the additional effect that @p memory ownership transfers to the
+         * image and is then available through @ref dedicatedMemory().
+         */
+        void bindDedicatedMemory(Memory&& memory);
+
+        /**
+         * @brief Whether the image has a dedicated memory
+         *
+         * Returns @cpp true @ce if the image memory was bound using
+         * @ref bindDedicatedMemory(), @cpp false @ce otherwise.
+         * @see @ref dedicatedMemory()
+         */
+        bool hasDedicatedMemory() const;
+
+        /**
+         * @brief Dedicated image memory
+         *
+         * Expects that the image has a dedicated memory.
+         * @see @ref hasDedicatedMemory()
+         */
+        Memory& dedicatedMemory();
+
+        /**
          * @brief Release the underlying Vulkan image
          *
          * Releases ownership of the Vulkan image and returns its handle so
@@ -416,11 +453,16 @@ class MAGNUM_VK_EXPORT Image {
         MAGNUM_VK_LOCAL static void getMemoryRequirementsKHR(Device& device, const VkImageMemoryRequirementsInfo2& info, VkMemoryRequirements2& requirements);
         MAGNUM_VK_LOCAL static void getMemoryRequirements11(Device& device, const VkImageMemoryRequirementsInfo2& info, VkMemoryRequirements2& requirements);
 
+        MAGNUM_VK_LOCAL static void bindMemoryImplementationDefault(Device& device, UnsignedInt count, const VkBindImageMemoryInfo* infos);
+        MAGNUM_VK_LOCAL static void bindMemoryImplementationKHR(Device& device, UnsignedInt count, const VkBindImageMemoryInfo* infos);
+        MAGNUM_VK_LOCAL static void bindMemoryImplementation11(Device& device, UnsignedInt count, const VkBindImageMemoryInfo* infos);
+
         /* Can't be a reference because of the NoCreate constructor */
         Device* _device;
 
         VkImage _handle;
         HandleFlags _flags;
+        Memory _dedicatedMemory;
 };
 
 }}
