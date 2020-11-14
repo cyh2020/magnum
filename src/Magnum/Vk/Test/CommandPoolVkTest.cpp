@@ -55,7 +55,7 @@ CommandPoolVkTest::CommandPoolVkTest() {
 void CommandPoolVkTest::construct() {
     {
         CommandPool pool{device(), CommandPoolCreateInfo{
-            deviceProperties().pickQueueFamily(QueueFlag::Graphics),
+            device().properties().pickQueueFamily(QueueFlag::Graphics),
             CommandPoolCreateInfo::Flag::ResetCommandBuffer}};
         CORRADE_VERIFY(pool.handle());
         CORRADE_COMPARE(pool.handleFlags(), HandleFlag::DestroyOnDestruction);
@@ -67,7 +67,7 @@ void CommandPoolVkTest::construct() {
 
 void CommandPoolVkTest::constructMove() {
     CommandPool a{device(), CommandPoolCreateInfo{
-        deviceProperties().pickQueueFamily(QueueFlag::Graphics),
+        device().properties().pickQueueFamily(QueueFlag::Graphics),
         CommandPoolCreateInfo::Flag::Transient}};
     VkCommandPool handle = a.handle();
 
@@ -88,7 +88,7 @@ void CommandPoolVkTest::wrap() {
     VkCommandPool pool{};
     CORRADE_COMPARE(Result(device()->CreateCommandPool(device(),
         CommandPoolCreateInfo{
-            deviceProperties().pickQueueFamily(QueueFlag::Graphics)},
+            device().properties().pickQueueFamily(QueueFlag::Graphics)},
         nullptr, &pool)), Result::Success);
     CORRADE_VERIFY(pool);
 
@@ -103,7 +103,7 @@ void CommandPoolVkTest::wrap() {
 
 void CommandPoolVkTest::reset() {
     CommandPool pool{device(), CommandPoolCreateInfo{
-        deviceProperties().pickQueueFamily(QueueFlag::Graphics)}};
+        device().properties().pickQueueFamily(QueueFlag::Graphics)}};
 
     pool.reset(CommandPoolResetFlag::ReleaseResources);
 
@@ -113,7 +113,7 @@ void CommandPoolVkTest::reset() {
 
 void CommandPoolVkTest::allocate() {
     CommandPool pool{device(), CommandPoolCreateInfo{
-        deviceProperties().pickQueueFamily(QueueFlag::Graphics)}};
+        device().properties().pickQueueFamily(QueueFlag::Graphics)}};
 
     CommandBuffer a = pool.allocate(CommandBufferLevel::Secondary);
     CORRADE_VERIFY(a.handle());
