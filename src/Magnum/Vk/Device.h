@@ -95,7 +95,8 @@ class MAGNUM_VK_EXPORT DeviceCreateInfo {
          * @param extensionProperties Existing @ref ExtensionProperties
          *      instance for querying available Vulkan extensions. If
          *      @cpp nullptr @ce, a new instance may be created internally if
-         *      needed.
+         *      needed. If a r-value is passed, the instance is later available
+         *      through @ref Device::properties().
          * @param flags             Device creation flags
          *
          * The following @type_vk{DeviceCreateInfo} fields are pre-filled in
@@ -106,10 +107,19 @@ class MAGNUM_VK_EXPORT DeviceCreateInfo {
         explicit DeviceCreateInfo(DeviceProperties& deviceProperties, const ExtensionProperties* extensionProperties, Flags flags = {});
 
         /** @overload */
-        explicit DeviceCreateInfo(DeviceProperties&& deviceProperties, const ExtensionProperties* extensionProperties, Flags flags = {}): DeviceCreateInfo{deviceProperties, extensionProperties, flags} {}
-
-        /** @overload */
         explicit DeviceCreateInfo(DeviceProperties& deviceProperties, Flags flags = {}): DeviceCreateInfo{deviceProperties, nullptr, flags} {}
+
+        /**
+         * @brief Construct with allowing to reuse already populated device properties
+         *
+         * Compared to @ref DeviceCreateInfo(const DeviceProperties&, const ExtensionProperties*, Flags), if the @ref Device is subsequently
+         * constructed via @ref Device(Instance&, DeviceCreateInfo&&), the
+         * @p deviceProperties instance gets directly transferred to the
+         * device, meaning @ref Device::properties() and any APIs relying on it
+         * can reuse what was possibly already queried without having to repeat
+         * the potentially complex queries second time.
+         */
+        explicit DeviceCreateInfo(DeviceProperties&& deviceProperties, const ExtensionProperties* extensionProperties, Flags flags = {});
 
         /** @overload */
         explicit DeviceCreateInfo(DeviceProperties&& deviceProperties, Flags flags = {}): DeviceCreateInfo{std::move(deviceProperties), nullptr, flags} {}
@@ -133,6 +143,18 @@ class MAGNUM_VK_EXPORT DeviceCreateInfo {
 
         ~DeviceCreateInfo();
 
+        /* All the && overloads below are there in order to allow code like
+
+            Device device{instance, DeviceCreateInfo{pickDevice(instance)}
+                .addQueues(...)
+                .addEnabledExtensions(...)
+                ...
+            };
+
+           to work and correctly move the DeviceProperties to the Device.
+           When adding new APIs, expand DeviceVkTest::createInfoRvalue() to
+           verify everything still works. */
+
         /**
          * @brief Add enabled device extensions
          * @return Reference to self (for method chaining)
@@ -145,17 +167,30 @@ class MAGNUM_VK_EXPORT DeviceCreateInfo {
          * null-terminated, use the @link Containers::Literals::operator""_s() @endlink
          * literal to prevent that where possible.
          */
-        DeviceCreateInfo& addEnabledExtensions(Containers::ArrayView<const Containers::StringView> extensions);
+        DeviceCreateInfo& addEnabledExtensions(Containers::ArrayView<const Containers::StringView> extensions) &;
         /** @overload */
-        DeviceCreateInfo& addEnabledExtensions(std::initializer_list<Containers::StringView> extension);
+        DeviceCreateInfo&& addEnabledExtensions(Containers::ArrayView<const Containers::StringView> extensions) &&;
         /** @overload */
-        DeviceCreateInfo& addEnabledExtensions(Containers::ArrayView<const Extension> extensions);
+        DeviceCreateInfo& addEnabledExtensions(std::initializer_list<Containers::StringView> extension) &;
         /** @overload */
-        DeviceCreateInfo& addEnabledExtensions(std::initializer_list<Extension> extension);
+        DeviceCreateInfo&& addEnabledExtensions(std::initializer_list<Containers::StringView> extension) &&;
         /** @overload */
-        template<class ...E> DeviceCreateInfo& addEnabledExtensions() {
+        DeviceCreateInfo& addEnabledExtensions(Containers::ArrayView<const Extension> extensions) &;
+        /** @overload */
+        DeviceCreateInfo&& addEnabledExtensions(Containers::ArrayView<const Extension> extensions) &&;
+        /** @overload */
+        DeviceCreateInfo& addEnabledExtensions(std::initializer_list<Extension> extension) &;
+        /** @overload */
+        DeviceCreateInfo&& addEnabledExtensions(std::initializer_list<Extension> extension) &&;
+        /** @overload */
+        template<class ...E> DeviceCreateInfo& addEnabledExtensions() & {
             static_assert(Implementation::IsExtension<E...>::value, "expected only Vulkan device extensions");
-            return addEnabledExtensions({E{}...});
+            return addEnabledExtensions(std::initializer_list<Extension>{E{}...});
+        }
+        /** @overload */
+        template<class ...E> DeviceCreateInfo&& addEnabledExtensions() && {
+            addEnabledExtensions<E...>();
+            return std::move(*this);
         }
 
         /**
@@ -170,9 +205,13 @@ class MAGNUM_VK_EXPORT DeviceCreateInfo {
          *
          * @see @ref DeviceProperties::pickQueueFamily()
          */
-        DeviceCreateInfo& addQueues(UnsignedInt family, Containers::ArrayView<const Float> priorities, Containers::ArrayView<const Containers::Reference<Queue>> output);
+        DeviceCreateInfo& addQueues(UnsignedInt family, Containers::ArrayView<const Float> priorities, Containers::ArrayView<const Containers::Reference<Queue>> output) &;
         /** @overload */
-        DeviceCreateInfo& addQueues(UnsignedInt family, std::initializer_list<Float> priorities, std::initializer_list<Containers::Reference<Queue>> output);
+        DeviceCreateInfo&& addQueues(UnsignedInt family, Containers::ArrayView<const Float> priorities, Containers::ArrayView<const Containers::Reference<Queue>> output) &&;
+        /** @overload */
+        DeviceCreateInfo& addQueues(UnsignedInt family, std::initializer_list<Float> priorities, std::initializer_list<Containers::Reference<Queue>> output) &;
+        /** @overload */
+        DeviceCreateInfo&& addQueues(UnsignedInt family, std::initializer_list<Float> priorities, std::initializer_list<Containers::Reference<Queue>> output) &&;
 
         /**
          * @brief Add queues using raw info
@@ -182,7 +221,9 @@ class MAGNUM_VK_EXPORT DeviceCreateInfo {
          * queue properties using the `pNext` chain. The info is uses as-is,
          * with all pointers expected to stay in scope until device creation.
          */
-        DeviceCreateInfo& addQueues(const VkDeviceQueueCreateInfo& info);
+        DeviceCreateInfo& addQueues(const VkDeviceQueueCreateInfo& info) &;
+        /** @overload */
+        DeviceCreateInfo&& addQueues(const VkDeviceQueueCreateInfo& info) &&;
 
         /** @brief Underlying @type_vk{DeviceCreateInfo} structure */
         VkDeviceCreateInfo& operator*() { return _info; }
@@ -351,6 +392,20 @@ class MAGNUM_VK_EXPORT Device {
         explicit Device(Instance& instance, const DeviceCreateInfo& info);
 
         /**
+         * @brief Construct with reusing already populated device properties
+         *
+         * Compared to @ref Device(Instance&, const DeviceCreateInfo&), it can
+         * take ownership of the @ref DeviceProperties added to @p info earlier
+         * via @ref DeviceCreateInfo(DeviceProperties&&, const ExtensionProperties*, Flags) or any of the other r-value-taking
+         * constructors.
+         *
+         * With that, the @ref properties() getter and any APIs relying on it
+         * can reuse what was possibly already queried without having to repeat
+         * the potentially complex queries second time.
+         */
+        explicit Device(Instance& instance, DeviceCreateInfo&& info);
+
+        /**
          * @brief Construct without creating the device
          *
          * The constructed instance is equivalent to moved-from state. Useful
@@ -388,6 +443,15 @@ class MAGNUM_VK_EXPORT Device {
 
         /** @brief Handle flags */
         HandleFlags handleFlags() const { return _flags; }
+
+        /**
+         * @brief Device properties
+         *
+         * If a r-value @ref DeviceProperties instance was propagated to
+         * @ref DeviceCreateInfo and then to @ref Device, it's reused here.
+         * Otherwise the contents are populated on first use.
+         */
+        DeviceProperties& properties() { return *_properties; }
 
         /**
          * @brief Version supported by the device
@@ -474,6 +538,10 @@ class MAGNUM_VK_EXPORT Device {
     private:
         friend Implementation::DeviceState;
 
+        /* Common guts for Device(Instance&, DeviceCreateInfo&) and
+           Device(Instance&, DeviceCreateInfo&&) */
+        explicit Device(Instance& isntance, const DeviceCreateInfo&, DeviceProperties&&);
+
         template<class T> MAGNUM_VK_LOCAL void initializeExtensions(Containers::ArrayView<const T> enabledExtensions);
         MAGNUM_VK_LOCAL void initialize(Instance& instance, Version version);
 
@@ -484,6 +552,7 @@ class MAGNUM_VK_EXPORT Device {
         HandleFlags _flags;
         Version _version;
         Math::BoolVector<Implementation::ExtensionCount> _extensionStatus;
+        Containers::Pointer<DeviceProperties> _properties;
         Containers::Pointer<Implementation::DeviceState> _state;
 
         /* This member is bigger than you might think */
